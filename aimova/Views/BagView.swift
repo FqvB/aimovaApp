@@ -27,7 +27,7 @@ struct BagView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     EditButton()
                 }
-                ToolbarItem(placement: .bottomBar) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button(role: .destructive) {
                         authViewModel.signOut()
                     } label: {
@@ -128,5 +128,67 @@ private struct ClubRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+#Preview {
+    BagViewPreviewContainer()
+}
+
+private struct BagViewPreviewContainer: View {
+    @StateObject private var authViewModel: AuthViewModel
+    @StateObject private var bagViewModel: BagViewModel
+
+    init() {
+        let bagViewModel = BagViewModel()
+        let now = Date()
+        bagViewModel.activeClubs = [
+            Club(
+                id: "club-1",
+                userId: "user-1",
+                name: "Titleist TSR2",
+                clubType: .driver,
+                loftDegrees: 10.0,
+                displayOrder: 0,
+                isActive: true,
+                shotCounts: ShotCounts(fade: 4, draw: 2, straight: 6),
+                createdAt: now,
+                updatedAt: now
+            ),
+            Club(
+                id: "club-2",
+                userId: "user-1",
+                name: "Mizuno JPX 7i",
+                clubType: .iron,
+                loftDegrees: 32.0,
+                displayOrder: 1,
+                isActive: true,
+                shotCounts: ShotCounts(fade: 1, draw: 0, straight: 5),
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+        bagViewModel.inactiveClubs = [
+            Club(
+                id: "club-3",
+                userId: "user-1",
+                name: "Vokey SM9 56",
+                clubType: .wedge,
+                loftDegrees: 56.0,
+                displayOrder: 2,
+                isActive: false,
+                shotCounts: .empty,
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+        _authViewModel = StateObject(wrappedValue: AuthViewModel())
+        _bagViewModel = StateObject(wrappedValue: bagViewModel)
+    }
+
+    var body: some View {
+        BagView()
+            .environmentObject(authViewModel)
+            .environmentObject(bagViewModel)
     }
 }

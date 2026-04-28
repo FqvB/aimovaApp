@@ -33,6 +33,14 @@ struct Club: Identifiable {
     let updatedAt: Date
 }
 
+extension Club: Equatable {
+    static func == (lhs: Club, rhs: Club) -> Bool { lhs.id == rhs.id }
+}
+
+extension Club: Hashable {
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
 extension Club: Codable {
     enum CodingKeys: String, CodingKey {
         case id, name
