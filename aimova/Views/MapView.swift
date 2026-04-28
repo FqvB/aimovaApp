@@ -15,6 +15,7 @@ struct MapView: View {
     )
     @State private var visibleCenter: CLLocationCoordinate2D = LocationManager.augustaNational
     @State private var showQuickLog = false
+    @State private var hasInitialLocation = false
 
     // Pre-computed each render so Map content stays simple
     private var currentOverlays: [EllipseOverlay] {
@@ -83,7 +84,8 @@ struct MapView: View {
             locationManager.requestPermission()
         }
         .onReceive(locationManager.$userLocation) { location in
-            guard let location else { return }
+            guard let location, !hasInitialLocation else { return }
+            hasInitialLocation = true
             position = .region(
                 MKCoordinateRegion(
                     center: location,

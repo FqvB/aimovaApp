@@ -1,20 +1,26 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import base64
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from config import JWT_SECRET, JWT_EXPIRE_MINUTES
 
 _bearer = HTTPBearer()
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _stretch(plain: str) -> str:
+    digest = hashlib.sha256(plain.encode()).digest()
+    return base64.b64encode(digest).decode()
 
 
 def hash_password(plain: str) -> str:
-    return _pwd.hash(plain)
+    return bcrypt.hashpw(_stretch(plain).encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd.verify(plain, hashed)
+    return bcrypt.checkpw(_stretch(plain).encode(), hashed.encode())
 
 
 def create_token(user_id: str) -> str:
