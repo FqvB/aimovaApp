@@ -6,23 +6,25 @@
 //
 
 import SwiftUI
-import MapKit
 
 struct ContentView: View {
-    @State private var position: MapCameraPosition = .region(
-        MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 37.3346, longitude: -122.0090),
-            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-        )
-    )
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var bagViewModel = BagViewModel()
 
     var body: some View {
-        Map(position: $position) {}
-            .mapStyle(.imagery(elevation: .realistic))
-            .ignoresSafeArea()
+        if authViewModel.isAuthenticated {
+            TabView {
+                MapView()
+                    .tabItem { Label("Map", systemImage: "map") }
+                    .environmentObject(bagViewModel)
+
+                BagView()
+                    .tabItem { Label("Bag", systemImage: "bag") }
+                    .environmentObject(bagViewModel)
+            }
+        } else {
+            LoginView()
+        }
     }
 }
 
-#Preview {
-    ContentView()
-}
