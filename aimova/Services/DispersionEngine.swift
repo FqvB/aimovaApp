@@ -21,6 +21,12 @@ struct DispersionResult {
     let ellipse90: EllipseParams?
 }
 
+struct WindInput {
+    let speedMph: Double
+    let directionDegrees: Double
+    let aimBearing: Double
+}
+
 enum DispersionEngine {
     static let minimumShots = 4
     private static let eps = 1e-9
@@ -93,6 +99,44 @@ enum DispersionEngine {
             covarianceMatrix: [[a, b], [b, d]],
             ellipse50: ellipse(confidence: 0.5),
             ellipse90: ellipse(confidence: 0.9)
+        )
+    }
+
+    static func applyWind(to result: DispersionResult, wind: WindInput) -> DispersionResult {
+        guard result.sufficientData,
+              let meanCarry = result.meanCarry,
+              let meanOffline = result.meanOffline,
+              let e50 = result.ellipse50,
+              let e90 = result.ellipse90 else { return result }
+
+        let angleRad = (wind.directionDegrees - wind.aimBearing) * .pi / 180.0
+        let headwindMph = wind.speedMph * cos(angleRad)
+        let crosswindMph = wind.speedMph * sin(angleRad)
+
+        let adjustedCarry: Double
+        if headwindMph > 0 {
+            adjustedCarry = meanCarry * (1.0 - 0.01 * headwindMph)
+        } else {
+            adjustedCarry = meanCarry * (1.0 + 0.005 * abs(headwindMph))
+        }
+
+        let offlineShift = 0.005 * meanCarry * crosswindMph
+        let adjustedOffline = meanOffline + offlineShift
+
+        let widthFactor = headwindMph > 0 ? (1.0 + 0.02 * headwindMph) : 1.0
+
+        func widened(_ e: EllipseParams) -> EllipseParams {
+            EllipseParams(semiMajor: e.semiMajor, semiMinor: e.semiMinor * widthFactor, rotationDegrees: e.rotationDegrees)
+        }
+
+        return DispersionResult(
+            shotCount: result.shotCount,
+            sufficientData: true,
+            meanCarry: adjustedCarry,
+            meanOffline: adjustedOffline,
+            covarianceMatrix: result.covarianceMatrix,
+            ellipse50: widened(e50),
+            ellipse90: widened(e90)
         )
     }
 }

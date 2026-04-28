@@ -32,4 +32,20 @@ struct DispersionData: Codable {
         case ellipse50 = "ellipse_50"
         case ellipse90 = "ellipse_90"
     }
+
+    func toDispersionResult() -> DispersionResult {
+        func toParams(_ e: DispersionEllipse?) -> EllipseParams? {
+            guard let e else { return nil }
+            return EllipseParams(semiMajor: e.semiMajor, semiMinor: e.semiMinor, rotationDegrees: e.rotationDegrees)
+        }
+        return DispersionResult(
+            shotCount: shotCount,
+            sufficientData: sufficientData,
+            meanCarry: meanCarry,
+            meanOffline: meanOffline,
+            covarianceMatrix: nil,
+            ellipse50: toParams(ellipse50),
+            ellipse90: toParams(ellipse90)
+        )
+    }
 }

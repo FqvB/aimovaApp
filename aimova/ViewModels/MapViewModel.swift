@@ -9,6 +9,7 @@ struct EllipseOverlay: Identifiable {
     let color: Color
     let fillOpacity: Double
     let strokeOpacity: Double
+    var isGhost: Bool = false
 }
 
 extension ShotShape {
@@ -29,7 +30,47 @@ final class MapViewModel: ObservableObject {
     @Published var dispersionByClub: [String: [ShotShape: DispersionData]] = [:]
     @Published var isLoadingDispersion = false
 
+    @Published var windData: WindData?
+    @Published var windFetchFailed = false
+    @Published var showRawEllipses = false
+
+    @Published var tournamentMode: Bool = UserDefaults.standard.bool(forKey: "tournament_mode") {
+        didSet {
+            UserDefaults.standard.set(tournamentMode, forKey: "tournament_mode")
+            if tournamentMode {
+                stopWindUpdates()
+                windData = nil
+                windFetchFailed = false
+            } else if let loc = windLocation {
+                startWindUpdates(coordinate: loc)
+            }
+        }
+    }
+
     private let api = APIClient.shared
+    private var windTask: Task<Void, Never>?
+    private var windLocation: CLLocationCoordinate2D?
+    private var tournamentModeObserver: Any?
+
+    init() {
+        tournamentModeObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            let stored = UserDefaults.standard.bool(forKey: "tournament_mode")
+            if stored != self.tournamentMode {
+                self.tournamentMode = stored
+            }
+        }
+    }
+
+    deinit {
+        if let obs = tournamentModeObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+    }
 
     func toggleClub(_ clubId: String) async {
         if selectedClubId == clubId {
@@ -43,7 +84,7 @@ final class MapViewModel: ObservableObject {
             let responses: [DispersionData] = try await api.get("/api/v1/dispersion/\(clubId)")
             dispersionByClub[clubId] = Dictionary(uniqueKeysWithValues: responses.map { ($0.shotShape, $0) })
         } catch {
-            // No data → no ellipses shown; not a fatal error
+            // No data → no ellipses; not a fatal error
         }
         isLoadingDispersion = false
     }
@@ -56,9 +97,34 @@ final class MapViewModel: ObservableObject {
         }
     }
 
-    func dispersionForSelectedClub() -> [ShotShape: DispersionData]? {
-        guard let id = selectedClubId else { return nil }
-        return dispersionByClub[id]
+    func startWindUpdates(coordinate: CLLocationCoordinate2D) {
+        guard !tournamentMode else { return }
+        windLocation = coordinate
+        windTask?.cancel()
+        windTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.fetchWind()
+                try? await Task.sleep(for: .seconds(300))
+            }
+        }
+    }
+
+    func stopWindUpdates() {
+        windTask?.cancel()
+        windTask = nil
+    }
+
+    private func fetchWind() async {
+        guard let loc = windLocation else { return }
+        do {
+            let data: WindData = try await api.get(
+                "/api/v1/wind?lat=\(loc.latitude)&lon=\(loc.longitude)"
+            )
+            windData = data
+            windFetchFailed = false
+        } catch {
+            windFetchFailed = true
+        }
     }
 
     func ellipseOverlays(pin: CLLocationCoordinate2D) -> [EllipseOverlay] {
@@ -70,20 +136,68 @@ final class MapViewModel: ObservableObject {
         var overlays: [EllipseOverlay] = []
 
         for shape in ShotShape.allCases where activeShapes.contains(shape) {
-            guard let data = dispDict[shape],
-                  data.sufficientData,
-                  let meanCarry = data.meanCarry,
-                  let meanOffline = data.meanOffline,
-                  let e90 = data.ellipse90,
-                  let e50 = data.ellipse50 else { continue }
+            guard let data = dispDict[shape], data.sufficientData else { continue }
+
+            let rawResult = data.toDispersionResult()
+
+            guard let rawCarry = rawResult.meanCarry,
+                  let rawOffline = rawResult.meanOffline,
+                  let rawE50 = rawResult.ellipse50,
+                  let rawE90 = rawResult.ellipse90 else { continue }
+
+            let showWind = !tournamentMode && windData != nil
+            let result: DispersionResult
+
+            if showWind, let wind = windData {
+                result = DispersionEngine.applyWind(
+                    to: rawResult,
+                    wind: WindInput(
+                        speedMph: wind.windSpeedMph,
+                        directionDegrees: wind.windDirectionDegrees,
+                        aimBearing: bearing
+                    )
+                )
+            } else {
+                result = rawResult
+            }
+
+            guard let adjCarry = result.meanCarry,
+                  let adjOffline = result.meanOffline,
+                  let adjE50 = result.ellipse50,
+                  let adjE90 = result.ellipse90 else { continue }
+
+            if showWind && showRawEllipses {
+                overlays.append(EllipseOverlay(
+                    id: "\(clubId)_\(shape.rawValue)_raw_90",
+                    coordinates: GeoMath.ellipseCoordinates(
+                        pin: pin, aimBearing: bearing,
+                        meanCarry: rawCarry, meanOffline: rawOffline,
+                        semiMajor: rawE90.semiMajor, semiMinor: rawE90.semiMinor,
+                        rotationDegrees: rawE90.rotationDegrees
+                    ),
+                    color: shape.overlayColor, fillOpacity: 0, strokeOpacity: 0.5,
+                    isGhost: true
+                ))
+                overlays.append(EllipseOverlay(
+                    id: "\(clubId)_\(shape.rawValue)_raw_50",
+                    coordinates: GeoMath.ellipseCoordinates(
+                        pin: pin, aimBearing: bearing,
+                        meanCarry: rawCarry, meanOffline: rawOffline,
+                        semiMajor: rawE50.semiMajor, semiMinor: rawE50.semiMinor,
+                        rotationDegrees: rawE50.rotationDegrees
+                    ),
+                    color: shape.overlayColor, fillOpacity: 0, strokeOpacity: 0.3,
+                    isGhost: true
+                ))
+            }
 
             overlays.append(EllipseOverlay(
                 id: "\(clubId)_\(shape.rawValue)_90",
                 coordinates: GeoMath.ellipseCoordinates(
                     pin: pin, aimBearing: bearing,
-                    meanCarry: meanCarry, meanOffline: meanOffline,
-                    semiMajor: e90.semiMajor, semiMinor: e90.semiMinor,
-                    rotationDegrees: e90.rotationDegrees
+                    meanCarry: adjCarry, meanOffline: adjOffline,
+                    semiMajor: adjE90.semiMajor, semiMinor: adjE90.semiMinor,
+                    rotationDegrees: adjE90.rotationDegrees
                 ),
                 color: shape.overlayColor, fillOpacity: 0.15, strokeOpacity: 0.6
             ))
@@ -91,9 +205,9 @@ final class MapViewModel: ObservableObject {
                 id: "\(clubId)_\(shape.rawValue)_50",
                 coordinates: GeoMath.ellipseCoordinates(
                     pin: pin, aimBearing: bearing,
-                    meanCarry: meanCarry, meanOffline: meanOffline,
-                    semiMajor: e50.semiMajor, semiMinor: e50.semiMinor,
-                    rotationDegrees: e50.rotationDegrees
+                    meanCarry: adjCarry, meanOffline: adjOffline,
+                    semiMajor: adjE50.semiMajor, semiMinor: adjE50.semiMinor,
+                    rotationDegrees: adjE50.rotationDegrees
                 ),
                 color: shape.overlayColor, fillOpacity: 0.35, strokeOpacity: 0.0
             ))

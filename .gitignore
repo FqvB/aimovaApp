@@ -6,7 +6,8 @@
 
 # ── Xcode ────────────────────────────────────────────────────────────────────
 *.xcuserstate
-xcuserdata/
+*.xcuserdatastate
+**/xcuserdata/
 *.xccheckout
 *.moved-aside
 DerivedData/
@@ -74,3 +75,5 @@ service-account*.json
 *.swp
 *.swo
 *~
+aimova.xcodeproj/project.xcworkspace/xcuserdata/egsango.xcuserdatad/UserInterfaceState.xcuserstate
+*.xcuserstate

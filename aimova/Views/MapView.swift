@@ -17,7 +17,6 @@ struct MapView: View {
     @State private var showQuickLog = false
     @State private var hasInitialLocation = false
 
-    // Pre-computed each render so Map content stays simple
     private var currentOverlays: [EllipseOverlay] {
         mapViewModel.ellipseOverlays(pin: visibleCenter)
     }
@@ -34,9 +33,15 @@ struct MapView: View {
                             .stroke(.white.opacity(0.5), lineWidth: 1)
                     }
                     ForEach(currentOverlays) { overlay in
-                        MapPolygon(coordinates: overlay.coordinates)
-                            .foregroundStyle(overlay.color.opacity(overlay.fillOpacity))
-                            .stroke(overlay.color.opacity(overlay.strokeOpacity), lineWidth: 1)
+                        if overlay.isGhost {
+                            MapPolygon(coordinates: overlay.coordinates)
+                                .foregroundStyle(.clear)
+                                .stroke(overlay.color.opacity(overlay.strokeOpacity), lineWidth: 1.5)
+                        } else {
+                            MapPolygon(coordinates: overlay.coordinates)
+                                .foregroundStyle(overlay.color.opacity(overlay.fillOpacity))
+                                .stroke(overlay.color.opacity(overlay.strokeOpacity), lineWidth: 1)
+                        }
                     }
                 }
                 .mapStyle(.imagery(elevation: .realistic))
@@ -52,36 +57,14 @@ struct MapView: View {
             }
 
             crosshair
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                HStack(alignment: .bottom) {
-                    coordinateLabel
-                    Spacer()
-                    VStack(spacing: 12) {
-                        quickLogButton
-                        recenterButton
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-
-                if mapViewModel.selectedClubId != nil {
-                    shapeToggleRow
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.ultraThinMaterial)
-                }
-
-                clubSelectorStrip
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial)
-            }
+            overlayControls
         }
         .onAppear {
             locationManager.requestPermission()
+            mapViewModel.startWindUpdates(coordinate: visibleCenter)
+        }
+        .onDisappear {
+            mapViewModel.stopWindUpdates()
         }
         .onReceive(locationManager.$userLocation) { location in
             guard let location, !hasInitialLocation else { return }
@@ -97,6 +80,84 @@ struct MapView: View {
             QuickLogView()
                 .environmentObject(bagViewModel)
         }
+    }
+
+    // MARK: - Overlay controls
+
+    private var overlayControls: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                if mapViewModel.tournamentMode {
+                    tournamentBadge
+                }
+                Spacer()
+                if !mapViewModel.tournamentMode {
+                    windColumn
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            Spacer()
+
+            HStack(alignment: .bottom) {
+                coordinateLabel
+                Spacer()
+                VStack(spacing: 12) {
+                    quickLogButton
+                    recenterButton
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+
+            if mapViewModel.selectedClubId != nil {
+                shapeToggleRow
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial)
+            }
+
+            clubSelectorStrip
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial)
+        }
+    }
+
+    // MARK: - Wind column (top-right)
+
+    private var windColumn: some View {
+        VStack(spacing: 8) {
+            if let wind = mapViewModel.windData {
+                WindIndicatorView(wind: wind, isFailed: mapViewModel.windFetchFailed)
+            }
+            if mapViewModel.windData != nil && mapViewModel.selectedClubId != nil {
+                rawEllipseToggle
+            }
+        }
+    }
+
+    private var rawEllipseToggle: some View {
+        Button {
+            mapViewModel.showRawEllipses.toggle()
+        } label: {
+            Image(systemName: mapViewModel.showRawEllipses ? "eye.fill" : "eye")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(.black.opacity(0.6), in: Circle())
+        }
+    }
+
+    // MARK: - Tournament badge
+
+    private var tournamentBadge: some View {
+        Text("T")
+            .font(.caption.bold())
+            .foregroundStyle(.white)
+            .frame(width: 26, height: 26)
+            .background(.red, in: Circle())
     }
 
     // MARK: - Crosshair

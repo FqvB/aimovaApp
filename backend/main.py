@@ -5,6 +5,7 @@ from routes.auth import router as auth_router
 from routes.clubs import router as clubs_router
 from routes.shots import router as shots_router
 from routes.dispersion import router as dispersion_router
+from routes.wind import router as wind_router
 
 app = FastAPI(title="GolfApp API")
 
@@ -21,3 +22,4 @@ app.include_router(auth_router)
 app.include_router(clubs_router)
 app.include_router(shots_router)
 app.include_router(dispersion_router)
+app.include_router(wind_router)

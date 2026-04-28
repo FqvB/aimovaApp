@@ -21,6 +21,9 @@ struct ContentView: View {
                 BagView()
                     .tabItem { Label("Bag", systemImage: "bag") }
                     .environmentObject(bagViewModel)
+
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gear") }
             }
         } else {
             LoginView()
